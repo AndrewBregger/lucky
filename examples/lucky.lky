@@ -1,0 +1,14 @@
+List[$a] = data Nil | Con a List[a]
+
+DeclKind = type 
+    Local Expr |
+    Function List[Field] Expr
+
+Decl = data {
+    name: string,
+    kind: DeclKind
+}
+
+Package = Package string List[Decl]
+
+    
