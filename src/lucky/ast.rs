@@ -50,20 +50,20 @@ pub enum TypeKind {
 #[derive(Clone, Debug)]
 pub struct Expr {
     kind: ExprKind,
-    pos: Pos
+    pub pos: Pos
 }
 
 #[derive(Clone, Debug)]
 pub struct Decl {
     kind: DeclKind,
     name: Identifier,
-    pos: Pos
+    pub pos: Pos
 }
 
 #[derive(Clone, Debug)]
 pub struct Type {
     kind: TypeKind,
-    pos: Pos
+    pub pos: Pos
 }
 
 impl Expr {

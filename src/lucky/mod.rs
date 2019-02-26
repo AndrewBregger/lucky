@@ -74,7 +74,7 @@ impl Lucky {
                 }
 
                 // let tokens = TokenStream::from_string(input.as_str()).collect::<Vec<_>>();
-                let mut parser = Parser::from_string(input.as_str());
+                let mut parser = Parser::from_string(&mut self.reporter, input.as_str());
 
                 println!("{:?}", parser.parse_expr(None));
             }
