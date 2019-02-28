@@ -13,6 +13,17 @@ pub struct ReportPosition {
     pub file: Option<File>
 }
 
+impl ReportPosition {
+    pub fn zero() -> Self {
+        ReportPosition {
+            line: 0,
+            column: 0,
+            span: 0,
+            file: None
+        }
+    }
+}
+
 impl Reporter {
     pub fn new() -> Reporter {
         Reporter {

@@ -20,9 +20,10 @@ pub enum ExprKind {
     Name(String),
     Binary(Op, Box<Expr>, Box<Expr>),
     Unary(Op, Box<Expr>),
-    App(Identifier, Vec<Expr>),
+    App(Box<Expr>, Vec<Expr>),
+    // operand:name
     Access(Box<Expr>, Identifier),
-    Lambda(Vec<Identifier>, Box<Expr>)
+    Lambda(Vec<Identifier>, Box<Expr>),
 }
 
 #[derive(Clone, Debug)]
@@ -43,8 +44,11 @@ pub enum DeclKind {
 #[derive(Clone, Debug)]
 pub enum TypeKind {
     Name(Identifier),
+    Polymorphic(Identifier, Vec<Type>),
     Tuple(Vec<Type>),
     Funct(Vec<Type>, Box<Type>),
+    Generic(Identifier),
+    List(Box<Type>)
 }
 
 #[derive(Clone, Debug)]
@@ -72,6 +76,58 @@ impl Expr {
             kind, pos
         }
     }
+
+    pub fn is_name(&self) -> bool {
+        match self.kind {
+            ExprKind::Name(_) => true,
+            _ => false,
+        }
+    }
+
+    pub fn is_binary(&self) -> bool {
+        match self.kind {
+            ExprKind::Binary(..) => true,
+            _ => false,
+        }
+    }
+
+    pub fn is_unary(&self) -> bool {
+        match self.kind {
+            ExprKind::Unary(..) => true,
+            _ => false,
+        }
+    }
+
+    pub fn is_application(&self) -> bool {
+        match self.kind {
+            ExprKind::App(..) => true,
+            _ => false,
+        }
+    }
+
+    pub fn is_accessor(&self) -> bool {
+        match self.kind {
+            ExprKind::Access(..) => true,
+            _ => false,
+        }
+    }
+
+    pub fn is_literal(&self) -> bool {
+        match self.kind {
+            ExprKind::Integer(_) |
+            ExprKind::Float(_) |
+            ExprKind::Bool(_) |
+            ExprKind::Str(_) => true,
+            _ => false,
+        }
+    }
+
+    pub fn is_lambda(&self) -> bool {
+        match self.kind {
+            ExprKind::Lambda(..) => true,
+            _ => false,
+        }
+    }
 }
 
 impl Decl {
@@ -85,7 +141,30 @@ impl Decl {
 impl Type {
     pub fn new(kind: TypeKind, pos: Pos) -> Type {
         Type {
-            kind, pos
+            kind,
+            pos
         }
+    }
+}
+
+impl Identifier {
+    pub fn new(val: &String, pos: Pos) -> Self {
+        Identifier(val.clone(), pos)
+    }
+
+    pub fn pos(&self) -> Pos {
+        self.1
+    }
+}
+
+impl Field {
+    pub fn new(id: Identifier, ty: Type) -> Self {
+        Self(id, ty)
+    }
+}
+
+impl Variant {
+    pub fn new(id: Identifier, tys: Vec<Type>) -> Self {
+        Self(id, tys)
     }
 }

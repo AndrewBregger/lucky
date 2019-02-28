@@ -11,4 +11,6 @@ Decl = data {
 
 Package = Package string List[Decl]
 
-    
+
+bar x -> int y -> int: int = x + y
+foo x y = x + y

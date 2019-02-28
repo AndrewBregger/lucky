@@ -7,13 +7,16 @@ pub mod report;
 pub mod scanner;
 pub mod parser;
 
+pub use self::ast::{Decl, Expr};
 pub use self::report::Reporter;
 pub use self::scanner::{TokenStream, Token};
 pub use self::parser::{Parser};
 
+use std::fs;
 use std::io;
+use std::io::Read;
 use std::io::Write;
-use std::io::{BufRead};
+use std::io::{BufRead, BufReader, Result};
 
 enum ExecutionResult {
     Success,
@@ -73,10 +76,7 @@ impl Lucky {
                     }
                 }
 
-                // let tokens = TokenStream::from_string(input.as_str()).collect::<Vec<_>>();
-                let mut parser = Parser::from_string(&mut self.reporter, input.as_str());
-
-                println!("{:?}", parser.parse_expr(None));
+                // let expr = parser.parse_decl_or_expr();
             }
             else {
                 continue;
@@ -84,8 +84,33 @@ impl Lucky {
         }
     }
 
-    pub fn compile_file(&mut self) {
+    fn compile_string(&mut self, data: &str) -> ExecutionResult {
+        let mut parser = Parser::from_string(&mut self.reporter, input.as_str());
+        // println!("{:?}", parser.parse_expr(None));
+        let mut decls : Vec<Decl> = Vec::new();
+        loop {
+           match parser.parse_decl() {
+               Ok(decl) => decls.push(decl),
+               _ => break,
+           }
+           
+        }
+        ExecutionResult::Success
+    }
 
+    pub fn compile_file(&mut self) {
+        let mut root = fs::File::open(self.file.clone().unwrap());
+        match fs::File::open(self.file.clone().unwrap()) {
+            Ok(file) => {
+                let mut content = String::new();
+                let mut buf_reader = BufReader::new(file);
+                buf_reader.read_to_string(&mut content).unwrap();
+                compile_string(content.as_str());
+            },
+            Err(e) => {
+                println!("{:#?}", e);
+            }
+        }
     }
 
     fn parse_command(input: &str) -> Option<ReplCommands> {

@@ -95,6 +95,13 @@ impl Token {
             _ => false
         }
     }
+
+    pub fn is_newline(&self) -> bool {
+        match self.kind {
+            TokenKind::NewLine => true,
+            _ => false,
+        }
+    }
 }
 
 // #[derive(Iterator)]
