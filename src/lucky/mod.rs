@@ -75,8 +75,9 @@ impl Lucky {
                         Quit => break,
                     }
                 }
-
-                // let expr = parser.parse_decl_or_expr();
+                let mut parser = Parser::from_string(&mut self.reporter, input.as_str());
+                let op = parser.parse_decl_or_expr();
+                println!("{:?}", op);
             }
             else {
                 continue;
@@ -85,7 +86,7 @@ impl Lucky {
     }
 
     fn compile_string(&mut self, data: &str) -> ExecutionResult {
-        let mut parser = Parser::from_string(&mut self.reporter, input.as_str());
+        let mut parser = Parser::from_string(&mut self.reporter, data);
         // println!("{:?}", parser.parse_expr(None));
         let mut decls : Vec<Decl> = Vec::new();
         loop {
@@ -105,7 +106,7 @@ impl Lucky {
                 let mut content = String::new();
                 let mut buf_reader = BufReader::new(file);
                 buf_reader.read_to_string(&mut content).unwrap();
-                compile_string(content.as_str());
+                self.compile_string(content.as_str());
             },
             Err(e) => {
                 println!("{:#?}", e);

@@ -13,6 +13,7 @@ pub struct Parser<'a> {
     ignore_newline: bool
 }
 
+#[derive(Debug)]
 pub enum Optional<P, S, E> {
     Primary(P),
     Secondary(S),
@@ -61,6 +62,15 @@ impl<'a> Parser<'a> {
     fn current(&self) -> Option<Token> {
         if self.index < self.tokens.len() as u32 {
             Some(self.tokens[self.index as usize].clone())
+        }
+        else {
+            None
+        }
+    }
+
+    fn peek(&self, dist: u32) -> Option<Token> {
+        if self.index + dist < self.tokens.len() as u32 {
+            Some(self.tokens[(self.index + dist) as usize].clone())
         }
         else {
             None
@@ -127,36 +137,128 @@ impl<'a> Parser<'a> {
         }
     }
 
-    fn parse_variant(&mut self) -> Variant {
-        let id = self.parse_ident();
-        
-    }
+    fn parse_variant(&mut self) -> PResult<Variant> {
+        if let Some(id) = self.parse_ident() {
+            let mut types : Vec<Type> = Vec::new();
+            let mut pos = id.pos();
 
-    fn parse_field(&mut self) -> Field {
-
-    }
-
-    fn parse_data_type(&mut self, ident: Identifier) -> PResult<Decl> {
-        if self.allow(TokenKind::Keyword(Kw::Type)) {
-            let old = self.ignore_newline;
-            self.ignore_newline = true;
-            let mut fields
-            while self.allow(TokenKind::Operator(Op::Pipe)) {
-
+            while self.can_be_type() {
+                let ty = self.parse_type();
+                match self.parse_type() {
+                    Ok(ty) => {
+                        pos.span += ty.pos.span;
+                        types.push(ty);
+                    },
+                    _ => return Err(())
+                }
             }
 
-            self.ignore_newline = old;
+            Ok(Variant::new(id, types))
         }
-        else if self.allow(TokenKind::Keyword(Kw::Data)) {
+        else {
+            println!("{:?}", self.current());
+            self.reporter.report_error_(ReportPosition::zero(), "expecting identifier");
+            Err(())
+        }
+    }
 
+    fn parse_field(&mut self) -> PResult<Field> {
+        println!("{:?}", self.current());
+        if let Some(id) = self.parse_ident() {
+            let mut pos = id.pos();
+            if self.expect(TokenKind::Operator(Op::Colon)) {
+                match self.parse_type() {
+                    Ok(ty) => {
+                        Ok(Field::new(id, ty))
+                    },
+                    _ => Err(())
+                }     
+            }
+            else {
+                Err(())
+            }
         }
         else {
             Err(())
         }
     }
 
-    fn parse_function(&mut self, ident: Identifier) -> PResult<Decl> {
 
+    fn parse_data_type(&mut self, ident: Identifier) -> PResult<Decl> {
+        if self.allow(TokenKind::Keyword(Kw::Type)) {
+            // let old = self.ignore_newline;
+            // self.ignore_newline = true;
+            let mut fields : Vec<Variant> = Vec::new();
+            let mut pos = ident.pos();
+
+            match self.parse_variant() {
+                Ok(var) => {
+                    fields.push(var);
+                }
+                _ => {
+                    self.reporter.report_error_(Self::convert_position(pos), "expecting type constructor");
+                    return Err(())
+                }
+            }
+            
+            while self.allow(TokenKind::Operator(Op::Pipe)) {
+                self.allow(TokenKind::NewLine);
+                match self.parse_variant() {
+                    Ok(var) => {
+                        fields.push(var);
+                    },
+                    _ => break,
+                }
+            }
+
+
+            //self.ignore_newline = old;
+
+            if fields.len() == 1 {
+                Ok(Decl::new(DeclKind::Product(fields[0 as usize].clone()), ident, pos))
+            }
+            else {
+                Ok(Decl::new(DeclKind::Sum(fields), ident, pos))
+            }
+        }
+        else if self.allow(TokenKind::Keyword(Kw::Data)) {
+            let mut fields : Vec<Field> = Vec::new();
+            let mut pos = ident.pos();
+
+            if self.expect(TokenKind::Operator(Op::OpenBracket)) {
+                while !self.check(TokenKind::Operator(Op::CloseBracket)) {
+                    self.allow(TokenKind::NewLine);
+                    match self.parse_field() {
+                        Ok(var) => {
+                            fields.push(var);
+                        },
+                        _ => break,
+                    }
+
+                    if !self.allow(TokenKind::Operator(Op::Comma)) {
+                        break;
+                    }
+                }
+
+                if self.expect(TokenKind::Operator(Op::CloseBracket)) {
+                    Ok(Decl::new(DeclKind::Record(fields), ident, pos))
+                }
+                else {
+                    Err(())
+                }
+            }
+            else {
+                Err(())
+            }
+        }
+        else {
+            self.reporter.report_error_(Self::convert_position(ident.pos()), "expecting 'type' or 'data' following '='");
+            Err(())
+        }
+    }
+
+    fn parse_function(&mut self, ident: Identifier) -> PResult<Decl> {
+        Err(())
     }
 
     pub fn parse_decl(&mut self) -> PResult<Decl> {
@@ -210,7 +312,7 @@ impl<'a> Parser<'a> {
 
         match self.current() {
             Some(ref token) => {
-                let is_decl = match token.kind {
+                let is_decl = match token.kind.clone() {
                     TokenKind::Operator(op) => {
                         match op {
                             Op::MinusGreater |
@@ -321,11 +423,11 @@ impl<'a> Parser<'a> {
                 };
                 Ok(Expr::new(kind, pos))
             },
-            TokenKind::Keyword(kw) => {
+            TokenKind::Keyword(ref kw) => {
                 match kw {
                     Kw::If => self.parse_if(),
                     Kw::True | Kw::False => {
-                        let val = kw == Kw::True;
+                        let val = *kw == Kw::True;
                         let kind = ExprKind::Bool(val);
                         let pos = Self::to_position(&token);
                         Ok(Expr::new(kind, pos))
@@ -372,33 +474,6 @@ impl<'a> Parser<'a> {
         Err(())
     }
 
-    fn can_be_application(&self) -> bool {
-        match self.current() {
-            Some(ref token) => {
-                match token.kind {
-                    TokenKind::IntLiteral(_) |
-                    TokenKind::FloatLiteral(_) |
-                    TokenKind::StringLiteral(_) |
-                    TokenKind::Ident(_) => true,
-                    TokenKind::Operator(ref op) => {
-                        match *op {
-                            Op::OpenParen => true,
-                            _ => false,
-                        }
-                    },
-                    TokenKind::Keyword(ref kw) => {
-                        match *kw {
-                            Kw::True |
-                            Kw::False => true,
-                            _ => false,
-                        }
-                    }
-                    _ => false,
-                } 
-            },
-            _ => false,
-        }
-    }    
 
     fn parse_primary(&mut self) -> PResult<Expr> {
         if let Ok(mut expr) = self.parse_bottom() {
@@ -534,7 +609,7 @@ impl<'a> Parser<'a> {
         if let Ok(mut expr) = self.parse_unary() {
             let min_prec = match min_prec_in {
                 Some(val) => val,
-                None => 0,
+                None => 2,
             };
             // println!("Current Expression {:?}", expr);
             // println!("Current Token {:?}", self.current());
@@ -598,7 +673,39 @@ impl<'a> Parser<'a> {
                     TokenKind::Ident(ref value) => {
                         match self.parse_ident() {
                             Some(ident) => {
-                                
+                                let mut pos = Self::to_position(token);
+
+                                if self.allow(TokenKind::Operator(Op::OpenBrace)) {
+                                    let mut types : Vec<Type> = Vec::new();
+
+                                    match self.parse_type() {
+                                        Ok(ty) => {
+                                            pos.span += ty.pos.span;
+                                            types.push(ty);
+                                        },
+                                        _ => return Err(())
+                                    }
+
+                                    while self.allow(TokenKind::Operator(Op::Comma)) {
+                                        match self.parse_type() {
+                                            Ok(ty) => {
+                                                pos.span += ty.pos.span;
+                                                types.push(ty);
+                                            },
+                                            _ => return Err(())
+                                        }
+                                    }
+
+                                    if self.expect(TokenKind::Operator(Op::CloseBrace)) {
+                                        Ok(Type::new(TypeKind::Polymorphic(ident, types), pos))
+                                    }
+                                    else {
+                                        Err(())
+                                    }
+                                }
+                                else {
+                                    Ok(Type::new(TypeKind::Name(ident), pos))
+                                }
                             },
                             _ => Err(())
                         }
@@ -664,7 +771,8 @@ impl<'a> Parser<'a> {
                                 match self.parse_type() {
                                     Ok(ty) => {
                                         if self.expect(TokenKind::Operator(Op::CloseBrace)) {
-                                            Ok(Type::new(TypeKind::List(Box::new(ty)), ty.pos))
+                                            let pos = ty.pos.clone();
+                                            Ok(Type::new(TypeKind::List(Box::new(ty)), pos))
                                         }
                                         else {
                                             Err(())
@@ -689,7 +797,8 @@ impl<'a> Parser<'a> {
                                 self.next();
                                 match self.parse_ident() {
                                     Some(id) => {
-                                        Ok(Type::new(TypeKind::Generic(id), id.pos()))
+                                        let pos = id.pos();
+                                        Ok(Type::new(TypeKind::Generic(id), pos)
                                     }
                                     _ => {
                                         // this is a recurring pattern mabye make this a wrapping function
@@ -709,7 +818,7 @@ impl<'a> Parser<'a> {
                             _ => {
                                 match self.current() {
                                     Some(ref token) => {
-                                        self.reporter.report_error(ReportPosition::zero(), format!("unexpected token when parsing a type: found '{}'", token.to_string());
+                                        self.reporter.report_error(ReportPosition::zero(), format!("unexpected token when parsing a type: found '{}'", token.to_string()));
                                         Err(())
                                     },
                                     _ => {
@@ -719,7 +828,11 @@ impl<'a> Parser<'a> {
                                 }
                             }
                         }
-                    } 
+                    },
+                    _ => {
+                        self.reporter.report_error(Self::convert_token(token), format!("expecting '[', '$', '(', or identifier: found: '{}'", token.to_string()));
+                        Err(())
+                    }
                 }
             },
             _ => {
@@ -728,4 +841,52 @@ impl<'a> Parser<'a> {
             }
         }
     }
+
+    fn can_be_type(&self) -> bool {
+        match self.current() {
+            Some(ref token) => {
+                match token.kind {
+                    TokenKind::Ident(_) => true,
+                    TokenKind::Operator(ref op) => {
+                        match op {
+                            Op::OpenParen |
+                            Op::OpenBrace |
+                            Op::Dollar => true,
+                            _ => false,
+                        }
+                    } ,
+                    _ => false,
+                }
+            },
+            _ => false
+        }
+    }
+
+    fn can_be_application(&self) -> bool {
+        match self.current() {
+            Some(ref token) => {
+                match token.kind {
+                    TokenKind::IntLiteral(_) |
+                    TokenKind::FloatLiteral(_) |
+                    TokenKind::StringLiteral(_) |
+                    TokenKind::Ident(_) => true,
+                    TokenKind::Operator(ref op) => {
+                        match *op {
+                            Op::OpenParen => true,
+                            _ => false,
+                        }
+                    },
+                    TokenKind::Keyword(ref kw) => {
+                        match *kw {
+                            Kw::True |
+                            Kw::False => true,
+                            _ => false,
+                        }
+                    }
+                    _ => false,
+                } 
+            },
+            _ => false,
+        }
+    }    
 }

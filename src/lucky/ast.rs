@@ -153,7 +153,7 @@ impl Identifier {
     }
 
     pub fn pos(&self) -> Pos {
-        self.1
+        self.1.clone()
     }
 }
 
