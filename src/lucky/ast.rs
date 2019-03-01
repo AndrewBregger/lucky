@@ -27,14 +27,17 @@ pub enum ExprKind {
 }
 
 #[derive(Clone, Debug)]
-pub struct Field(Identifier, Type);
+pub struct Field(Identifier, Option<Type>);
 
 #[derive(Clone, Debug)]
 pub struct Variant(Identifier, Vec<Type>);
 
 #[derive(Clone, Debug)]
+pub struct FunctionSignature(Vec<Field>, Option<Box<Type>>);
+
+#[derive(Clone, Debug)]
 pub enum DeclKind {
-    Function(Vec<Field>, Box<Expr>),
+    Function(FunctionSignature, Box<Expr>),
     Local(Box<Expr>),
     Sum(Vec<Variant>),
     Product(Variant),
@@ -158,7 +161,7 @@ impl Identifier {
 }
 
 impl Field {
-    pub fn new(id: Identifier, ty: Type) -> Self {
+    pub fn new(id: Identifier, ty: Option<Type>) -> Self {
         Self(id, ty)
     }
 }
@@ -166,5 +169,11 @@ impl Field {
 impl Variant {
     pub fn new(id: Identifier, tys: Vec<Type>) -> Self {
         Self(id, tys)
+    }
+}
+
+impl FunctionSignature {
+    pub fn new(fields: Vec<Field>, ret: Option<Box<Type>>) -> Self {
+        Self(fields, ret)
     }
 }

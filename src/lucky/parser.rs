@@ -1,7 +1,7 @@
 // mod self::ast;
 
 
-use super::ast::{Expr, ExprKind, Decl, DeclKind, Type, TypeKind, Pos, Identifier, Field, Variant};
+use super::ast::{Expr, ExprKind, Decl, DeclKind, Type, TypeKind, Pos, Identifier, Field, Variant, FunctionSignature};
 use super::scanner::{TokenStream, Token, TokenKind, Op, Kw};
 use super::report::{Reporter, ReportPosition};
 
@@ -143,7 +143,6 @@ impl<'a> Parser<'a> {
             let mut pos = id.pos();
 
             while self.can_be_type() {
-                let ty = self.parse_type();
                 match self.parse_type() {
                     Ok(ty) => {
                         pos.span += ty.pos.span;
@@ -151,6 +150,8 @@ impl<'a> Parser<'a> {
                     },
                     _ => return Err(())
                 }
+                println!("index {} - {}", self.index, self.tokens.len());
+                println!("End loop: {:?}", self.current());
             }
 
             Ok(Variant::new(id, types))
@@ -162,20 +163,27 @@ impl<'a> Parser<'a> {
         }
     }
 
-    fn parse_field(&mut self) -> PResult<Field> {
+    fn parse_field(&mut self, delim: TokenKind, require_type: bool) -> PResult<Field> {
         println!("{:?}", self.current());
         if let Some(id) = self.parse_ident() {
             let mut pos = id.pos();
-            if self.expect(TokenKind::Operator(Op::Colon)) {
+            if self.allow(delim.clone()) {
                 match self.parse_type() {
                     Ok(ty) => {
-                        Ok(Field::new(id, ty))
+                        Ok(Field::new(id, Some(ty)))
                     },
                     _ => Err(())
                 }     
             }
             else {
-                Err(())
+                if require_type {
+                    // this is not the best way to do this.
+                    self.expect(delim.clone());
+                    Err(())
+                }
+                else {
+                    Ok(Field::new(id, None))
+                }
             }
         }
         else {
@@ -200,14 +208,23 @@ impl<'a> Parser<'a> {
                     return Err(())
                 }
             }
-            
+
+            // if self.check(TokenKind::NewLine)
             while self.allow(TokenKind::Operator(Op::Pipe)) {
                 self.allow(TokenKind::NewLine);
                 match self.parse_variant() {
                     Ok(var) => {
                         fields.push(var);
                     },
-                    _ => break,
+                    _ => {
+                        match self.current() {
+                            Some(ref token) => {
+                                self.reporter.report_error(Self::convert_token(token), format!("expecting to find constructor following '|'"));
+                            },
+                            _ => break 
+                        }
+                        return Err(());
+                    }
                 }
             }
 
@@ -228,7 +245,7 @@ impl<'a> Parser<'a> {
             if self.expect(TokenKind::Operator(Op::OpenBracket)) {
                 while !self.check(TokenKind::Operator(Op::CloseBracket)) {
                     self.allow(TokenKind::NewLine);
-                    match self.parse_field() {
+                    match self.parse_field(TokenKind::Operator(Op::Colon), true) {
                         Ok(var) => {
                             fields.push(var);
                         },
@@ -258,7 +275,60 @@ impl<'a> Parser<'a> {
     }
 
     fn parse_function(&mut self, ident: Identifier) -> PResult<Decl> {
-        Err(())
+        let mut fields = Vec::new();
+        let mut pos = ident.pos();
+        while !self.check(TokenKind::Operator(Op::Equal)) &&
+              !self.check(TokenKind::Operator(Op::Colon)) {
+            self.allow(TokenKind::NewLine);
+            match self.parse_field(TokenKind::Operator(Op::MinusGreater), false)  {
+                Ok(var) => {
+                   fields.push(var); 
+                },
+                _ => break,
+            }
+        }
+
+        let mut retType: Option<Type>;
+
+        if self.allow(TokenKind::Operator(Op::Colon)) {
+            retType = match self.parse_type() {
+                Ok(ty) => Some(ty),
+                _ => {
+                    match self.current() {
+                        Some(ref token) => {
+                            self.reporter.report_error_(Self::convert_token(token), "expecting a type following ':'");
+                            return Err(())
+                        },
+                        _ => {
+                            self.reporter.report_error_(ReportPosition::zero(), "expecting a type following ':'");
+                            return Err(())
+                        }
+                    }
+                }
+            };
+        }
+        else {
+            retType = None;
+        }
+
+        if self.expect(TokenKind::Operator(Op::Equal)) {
+            let expr = match self.parse_expr(None) {
+                Ok(expr) => expr,
+                _ => return Err(()),
+            };
+
+            if retType.is_none() {
+                let functSig = FunctionSignature::new(fields, None);
+                Ok(Decl::new(DeclKind::Function(functSig, Box::new(expr)), ident, pos))
+            }
+            else {
+                let functSig = FunctionSignature::new(fields, Some(Box::new(retType.unwrap().clone())));
+                Ok(Decl::new(DeclKind::Function(functSig, Box::new(expr)), ident, pos))
+            }
+        }
+        else {
+            Err(())
+        }
     }
 
     pub fn parse_decl(&mut self) -> PResult<Decl> {
@@ -303,6 +373,7 @@ impl<'a> Parser<'a> {
 
     pub fn parse_decl_or_expr(&mut self) -> Optional<Decl, Expr, ()> {
         // save the string index
+        println!("{:?}", self.tokens);
         let start = self.index;
 
         let expr = match self.parse_expr(None) {
@@ -473,7 +544,6 @@ impl<'a> Parser<'a> {
     fn parse_if(&mut self) -> PResult<Expr> {
         Err(())
     }
-
 
     fn parse_primary(&mut self) -> PResult<Expr> {
         if let Ok(mut expr) = self.parse_bottom() {

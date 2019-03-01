@@ -262,6 +262,12 @@ impl<'a> Iterator for TokenStream<'a> {
                             self.character_next();
                             Some(Token::new(TokenKind::Error(String::from("inplace modifying operators are not valid")), line, column, 0))
                         }
+                        else if self.it.clone().next() == Some('>') {
+                            self.character_next();
+                            Some(Token::new(
+                                TokenKind::Operator(Op::MinusGreater)
+                                , line, column, self.column - column))
+                        }
                         else {
                             Some(Token::new(
                                 TokenKind::Operator(Op::Minus),
@@ -425,6 +431,16 @@ impl<'a> Iterator for TokenStream<'a> {
                         self.character_next();
                         Some(Token::new(
                             TokenKind::Operator(Op::Colon),
+                            line,
+                            column,
+                            self.column - column
+                            )
+                        )
+                    },
+                    '|' => {
+                        self.character_next();
+                        Some(Token::new(
+                            TokenKind::Operator(Op::Pipe),
                             line,
                             column,
                             self.column - column
